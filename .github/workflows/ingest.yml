@@ -1,0 +1,37 @@
+name: Ingest stock data
+
+# 觸發時機
+on:
+  schedule:
+    # cron 使用 UTC。09:00 UTC = 17:00 台灣時間（收盤 13:30 後，日資料已公布）
+    # 1-5 = 週一到週五（台灣國定假日仍會觸發，見教學文件的已知限制）
+    - cron: '0 9 * * 1-5'
+  # 允許在 GitHub 網頁 Actions 分頁手動觸發，方便測試、不必等排程
+  workflow_dispatch:
+
+# 最小權限：這個 job 只讀程式碼，不需要寫回 repo
+permissions:
+  contents: read
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout 程式碼
+        uses: actions/checkout@v4
+
+      - name: 安裝 Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: 安裝相依套件
+        run: npm ci
+
+      - name: 執行擷取
+        run: npm run ingest:ci
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
