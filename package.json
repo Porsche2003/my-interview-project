@@ -8,7 +8,9 @@
     "start": "next start",
     "lint": "eslint",
     "ingest": "node --env-file=.env.local --import tsx scripts/ingest/run.ts",
-    "ingest:ci": "node --import tsx scripts/ingest/run.ts"
+    "ingest:ci": "node --import tsx scripts/ingest/run.ts",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.0",
@@ -29,6 +31,7 @@
     "eslint-config-next": "16.2.9",
     "tailwindcss": "^4",
     "tsx": "^4.22.4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^4.1.10"
   }
 }
