@@ -50,7 +50,10 @@ export default async function StockDetailPage({ params }: Props) {
 
       {latest ? (
         <section className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-4">
-          <Stat label={`收盤價（${latest.trade_date}）`} value={formatPrice(latest.close_price)} />
+          <Stat 
+            label={`收盤價（${latest.trade_date}）`} 
+            value={formatPrice(latest.close_price)}
+            tone={change ? (change.change > 0 ? 'up' : change.change < 0 ? 'down' : 'flat') : 'flat'} />
           <Stat
             label="漲跌"
             value={
