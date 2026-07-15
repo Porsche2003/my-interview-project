@@ -78,7 +78,7 @@ export default async function StockDetailPage({ params }: Props) {
                   <th className="py-2">日期</th>
                   <th className="py-2 text-right">收盤</th>
                   <th className="py-2 text-right">本益比</th>
-                  <th className="py-2 text-right">成交量</th>
+                  <th className="py-2 text-right">成交量(張)</th>
                 </tr>
               </thead>
               <tbody>
