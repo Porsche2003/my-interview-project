@@ -10,13 +10,13 @@ jobs:
 
     steps:
     - name: 複製專案程式碼
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5
 
     - name: 安裝 Node.js 環境
-      uses: actions/setup-node@v4 # 使用 setup-node 工具的 v4 版本
+      uses: actions/setup-node@v5 # 使用 setup-node 工具的 v5 版本
       with:
         node-version: 22      
-            
+
     - name: 安裝套件
       run: npm install
 
