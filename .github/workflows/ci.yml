@@ -1,0 +1,27 @@
+name: Node.js CI
+
+on:
+  push:
+    branches: [ "main" ]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: 複製專案程式碼
+      uses: actions/checkout@v4
+
+    - name: 安裝 Node.js 環境
+      uses: actions/setup-node@v4 # 使用 setup-node 工具的 v4 版本
+      with:
+        node-version: 22      
+            
+    - name: 安裝套件
+      run: npm install
+
+    - name: 執行 Lint 檢查
+      run: npm run lint
+
+    - name: 執行 Test
+      run: npm test
