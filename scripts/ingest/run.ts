@@ -1,6 +1,7 @@
 import { fetchTwseQuotes } from './fetch-twse'
 import { fetchTpexQuotes } from './fetch-tpex'
 import { upsertQuotes } from './upsert'
+import { revalidateStocksCache } from './revalidate'
 import type { NormalizedQuote } from './types'
 
 async function main() {
@@ -38,6 +39,9 @@ async function main() {
   }
 
   await upsertQuotes(quotes)
+
+  // 資料寫入成功後，通知線上站台清除 stocks 快取（盡力而為，失敗不影響本次擷取）
+  await revalidateStocksCache()
 
   const elapsedSec = ((Date.now() - startedAt) / 1000).toFixed(1)
   console.log(`[ingest] 完成，共寫入 ${quotes.length} 筆，耗時 ${elapsedSec}s`)

@@ -9,6 +9,10 @@ import {
   formatVolume,
 } from '@/lib/quote'
 
+// 頁面層 ISR：動態路由沒有 generateStaticParams，會「首次被造訪時產生、之後快取」，
+// 每 3600 秒在背景重新產生；資料層另有 unstable_cache + tag 可被 webhook 精準清除。
+export const revalidate = 3600
+
 // Next 16：動態路由的 params 是 Promise，要 await
 type Props = { params: Promise<{ id: string }> }
 

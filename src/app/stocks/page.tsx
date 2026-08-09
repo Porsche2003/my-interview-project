@@ -4,6 +4,10 @@ import { listStocks } from '@/services/stocks'
 
 export const metadata: Metadata = { title: '股票列表｜股市資訊站' }
 
+// 頁面層 ISR：這頁的 HTML 也快取，最多 3600 秒後在背景重新產生一次。
+// 搭配 listStocks 的 unstable_cache（資料快取）+ /api/revalidate（webhook 精準失效）。
+export const revalidate = 3600
+
 // 公開頁：任何人（未登入也可）都能瀏覽，因為 stocks/daily_quotes 的 RLS 允許公開讀取。
 export default async function StocksPage() {
   const stocks = await listStocks(100)
