@@ -23,5 +23,8 @@ jobs:
     - name: 執行 Lint 檢查
       run: npm run lint
 
+    - name: 執行 TypeScript 檢查
+      run: npx tsc --noEmit
+      
     - name: 執行 Test
       run: npm test
