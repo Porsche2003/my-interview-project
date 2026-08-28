@@ -2,19 +2,15 @@ import { createClient } from '@/utils/supabase/server'
 import {
   mapWatchlistRows,
   StockIdSchema,
+  toWatchlistMutation,
   type WatchlistItem,
   type WatchlistJoinRow,
+  type WatchlistMutation,
 } from '@/lib/watchlist'
 
-// mutation 失敗的原因代碼。刻意用「代碼」而非自由文字：
-//   1. 不外洩內部細節：資料庫原始錯誤（表名、約束名、SQL 片段）絕不能回給客戶端，
-//      那些只寫進 server log。回給呼叫端的永遠是這個封閉集合裡的值。
-//   2. 型別安全：呼叫端 switch 這個 union 時，TypeScript 會檢查有沒有漏處理。
-//   3. 顯示什麼文案是 UI 層的決定（也才好做多語系），DAL 不該綁死字串。
-export type WatchlistErrorCode = 'unauthenticated' | 'invalid_stock_id' | 'db_error'
-
-// mutation 的回傳：明確回報成敗，讓呼叫端（Server Action / UI）能據以更新畫面或顯示錯誤。
-export type WatchlistMutation = { ok: true } | { ok: false; error: WatchlistErrorCode }
+// 型別定義在 lib（純層）與 pure mapper 放一起，這裡轉出給呼叫端，
+// 讓 UI / Server Action 可以只從 services 這個入口 import。
+export type { WatchlistErrorCode, WatchlistMutation } from '@/lib/watchlist'
 
 // watchlist 是「私人、每人不同、會變動」的資料，和公開的 stocks 完全相反：
 //   - 用 cookie-based 的 server client（要 auth.uid() 才知道現在是誰）
@@ -78,15 +74,13 @@ export async function addToWatchlist(stockId: string): Promise<WatchlistMutation
     .from('watchlist')
     .insert({ user_id: user.id, stock_id: stockId })
 
-  if (error) {
-    // 23505 = unique_violation：已經收藏過了。視為「冪等成功」而非錯誤——
-    // 使用者重複點「收藏」不該噴錯，結果（已在收藏中）已經達成。
-    if (error.code === '23505') return { ok: true }
-    // 原始訊息只進 server log；回給呼叫端的是代碼，避免洩漏資料庫內部細節。
+  // 「錯誤長什麼樣」交給 pure mapper 決定（含唯一鍵衝突視為冪等成功），
+  // 這裡只負責 I/O 與 log：原始訊息寫進 server log，永遠不回給呼叫端。
+  const result = toWatchlistMutation(error, { duplicateIsSuccess: true })
+  if (!result.ok && error) {
     console.error('DAL Error adding to watchlist:', error.message)
-    return { ok: false, error: 'db_error' }
   }
-  return { ok: true }
+  return result
 }
 
 // 移除收藏。RLS 的 delete policy（auth.uid() = user_id）已保證只能刪自己的列，
@@ -109,10 +103,10 @@ export async function removeFromWatchlist(stockId: string): Promise<WatchlistMut
     .delete()
     .eq('stock_id', stockId)
 
-  if (error) {
-    // 同上：細節進 log，不外洩給呼叫端。
+  // 同上。移除沒有「重複即成功」的語意，所以不帶 duplicateIsSuccess。
+  const result = toWatchlistMutation(error)
+  if (!result.ok && error) {
     console.error('DAL Error removing from watchlist:', error.message)
-    return { ok: false, error: 'db_error' }
   }
-  return { ok: true }
+  return result
 }

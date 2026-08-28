@@ -21,6 +21,43 @@ export const StockIdSchema = z.string().regex(/^[0-9A-Z]{4,6}$/)
 // 用 z.infer 把型別接出來，避免手寫 interface 跟 schema 各改各的而漂移
 export type StockId = z.infer<typeof StockIdSchema>
 
+// mutation 失敗的原因代碼。刻意用「代碼」而非自由文字：
+//   1. 不外洩內部細節：資料庫原始錯誤（表名、約束名、SQL 片段）絕不能回給客戶端，
+//      那些只寫進 server log。回給呼叫端的永遠是這個封閉集合裡的值。
+//   2. 型別安全：呼叫端 switch 這個 union 時，TypeScript 會檢查有沒有漏處理。
+//   3. 顯示什麼文案是 UI 層的決定（也才好做多語系），DAL 不該綁死字串。
+export type WatchlistErrorCode = 'unauthenticated' | 'invalid_stock_id' | 'db_error'
+
+// mutation 的回傳：明確回報成敗，讓呼叫端（Server Action / UI）能據以更新畫面或顯示錯誤。
+export type WatchlistMutation = { ok: true } | { ok: false; error: WatchlistErrorCode }
+
+// Postgres 唯一鍵衝突的錯誤碼
+export const UNIQUE_VIOLATION = '23505'
+
+// 只取我們需要的形狀，不綁死 Supabase 的 PostgrestError 型別——
+// 純函式不依賴外部套件型別，測試才好餵假資料。
+export type DbErrorLike = { code?: string; message: string }
+
+// 把資料庫錯誤映射成對外的結果。抽成純函式的理由：
+// 「不外洩內部細節」是一個安全保證，保證就該有測試釘死；
+// 混在 DAL 的 async 函式裡只能靠 mock Supabase 才測得到，那種測試又脆又假。
+export function toWatchlistMutation(
+  error: DbErrorLike | null | undefined,
+  options: { duplicateIsSuccess?: boolean } = {}
+): WatchlistMutation {
+  if (!error) return { ok: true }
+
+  // 加入收藏時，唯一鍵衝突代表「已經收藏過了」→ 結果已達成，視為冪等成功。
+  // 移除收藏沒有這個語意，所以由呼叫端用 options 明確指定，而不是預設行為。
+  if (options.duplicateIsSuccess && error.code === UNIQUE_VIOLATION) {
+    return { ok: true }
+  }
+
+  // 核心保證：不論資料庫吐出什麼（表名、約束名、RLS policy 名稱、SQL 片段），
+  // 回傳值永遠只有封閉集合裡的代碼。原始訊息由呼叫端寫進 server log。
+  return { ok: false, error: 'db_error' }
+}
+
 // 前端要用的乾淨型別（把 DB 巢狀結構攤平）
 export type WatchlistItem = {
   id: string

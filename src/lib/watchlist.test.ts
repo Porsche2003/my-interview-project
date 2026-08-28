@@ -1,5 +1,99 @@
 import { describe, it, expect } from 'vitest'
-import { mapWatchlistRows, StockIdSchema, type WatchlistJoinRow } from './watchlist'
+import {
+  mapWatchlistRows,
+  StockIdSchema,
+  toWatchlistMutation,
+  UNIQUE_VIOLATION,
+  type DbErrorLike,
+  type WatchlistJoinRow,
+} from './watchlist'
+
+describe('toWatchlistMutation — 正常路徑', () => {
+  it('沒有錯誤 → 成功', () => {
+    expect(toWatchlistMutation(null)).toEqual({ ok: true })
+  })
+
+  it('加入收藏遇到唯一鍵衝突 → 冪等成功（重複點收藏不該噴錯）', () => {
+    const dup: DbErrorLike = {
+      code: UNIQUE_VIOLATION,
+      message: 'duplicate key value violates unique constraint "watchlist_pkey"',
+    }
+    expect(toWatchlistMutation(dup, { duplicateIsSuccess: true })).toEqual({ ok: true })
+  })
+
+  it('移除收藏遇到同一個錯誤 → 仍算失敗（沒有「重複即成功」的語意）', () => {
+    const dup: DbErrorLike = { code: UNIQUE_VIOLATION, message: 'duplicate key value' }
+    expect(toWatchlistMutation(dup)).toEqual({ ok: false, error: 'db_error' })
+  })
+})
+
+describe('toWatchlistMutation — 錯誤路徑不外洩內部細節', () => {
+  // 真實世界的 Postgres / PostgREST 錯誤，訊息裡都帶著不該外流的內部資訊：
+  // 表名、約束名、RLS policy 描述、schema 名稱。
+  const leakyErrors: { label: string; error: DbErrorLike; secrets: string[] }[] = [
+    {
+      label: '資料表不存在（洩漏 schema/表名）',
+      error: { code: '42P01', message: 'relation "public.watchlist" does not exist' },
+      secrets: ['public.watchlist', 'relation'],
+    },
+    {
+      label: '外鍵違反（洩漏約束名）',
+      error: {
+        code: '23503',
+        message:
+          'insert or update on table "watchlist" violates foreign key constraint "watchlist_stock_id_fkey"',
+      },
+      secrets: ['watchlist_stock_id_fkey', 'foreign key constraint'],
+    },
+    {
+      label: 'RLS 擋下（洩漏安全機制細節）',
+      error: {
+        code: '42501',
+        message: 'new row violates row-level security policy for table "watchlist"',
+      },
+      secrets: ['row-level security policy'],
+    },
+    {
+      label: '未知錯誤（沒有 code）',
+      error: { message: 'connection terminated unexpectedly at 10.0.0.42:5432' },
+      secrets: ['10.0.0.42', '5432'],
+    },
+  ]
+
+  it.each(leakyErrors)('$label → 一律回 db_error', ({ error }) => {
+    expect(toWatchlistMutation(error)).toEqual({ ok: false, error: 'db_error' })
+  })
+
+  // 這是本檔最重要的一個測試：把回傳值整個序列化，確認資料庫的原始訊息
+  // 一個字都沒有跟著跑出去。若日後有人為了 debug 方便把 error.message 加回
+  // 回傳值裡，這個測試會立刻變紅。
+  it.each(leakyErrors)('$label → 回傳值不含任何原始訊息片段', ({ error, secrets }) => {
+    const serialized = JSON.stringify(toWatchlistMutation(error))
+    expect(serialized).not.toContain(error.message)
+    for (const secret of secrets) {
+      expect(serialized).not.toContain(secret)
+    }
+  })
+
+  // 就算加上 duplicateIsSuccess，非 23505 的錯誤也不能因此被誤判成成功
+  it('duplicateIsSuccess 只對 23505 生效，不會放過其他錯誤', () => {
+    const other: DbErrorLike = { code: '23503', message: 'foreign key violation' }
+    expect(toWatchlistMutation(other, { duplicateIsSuccess: true })).toEqual({
+      ok: false,
+      error: 'db_error',
+    })
+  })
+
+  // 封閉集合保證：對外的錯誤值只可能是這三個代碼之一
+  it('失敗時的 error 值必定落在封閉的代碼集合內', () => {
+    const allowed = ['unauthenticated', 'invalid_stock_id', 'db_error']
+    for (const { error } of leakyErrors) {
+      const result = toWatchlistMutation(error)
+      expect(result.ok).toBe(false)
+      if (!result.ok) expect(allowed).toContain(result.error)
+    }
+  })
+})
 
 describe('StockIdSchema', () => {
   // 這些全是資料庫裡真實存在的格式（2395 檔全量掃描歸納），不是想像出來的案例。
