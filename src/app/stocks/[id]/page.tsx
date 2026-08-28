@@ -2,6 +2,8 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import type { Metadata } from 'next'
 import { getStockDetail } from '@/services/stocks'
+import { getWatchlistState } from '@/services/watchlist'
+import { WatchlistButton } from '@/components/watchlist-button'
 import {
   computeChange,
   formatPrice,
@@ -9,11 +11,16 @@ import {
   formatVolume,
 } from '@/lib/quote'
 
-// 頁面層 ISR：動態路由沒有 generateStaticParams，會「首次被造訪時產生、之後快取」，
-// 每 3600 秒在背景重新產生；資料層另有 unstable_cache + tag 可被 webhook 精準清除。
-export const revalidate = 3600
-
-// Next 16：動態路由的 params 是 Promise，要 await
+// ⚠️ 這頁刻意「不」設 export const revalidate（原本有，加入收藏功能後移除）。
+//
+// 原因：★ 收藏是「每個使用者都不一樣」的狀態。一旦頁面 HTML 被 ISR 快取，
+// 就會把 A 使用者的收藏狀態送給 B 使用者看——那是隱私問題，不只是顯示錯誤。
+// 讀取 cookie（判斷登入者是誰）本來就會讓 Next 自動把這個路由轉為動態渲染，
+// 這裡把 revalidate 拿掉是讓「這頁是 per-user 的」這件事在程式碼上明確可見。
+//
+// 那 ADR-0001 想解的 DB 讀取壓力有沒有退步？沒有：
+// 真正昂貴的股價查詢仍由 getStockDetail 的 unstable_cache 快取（可被 webhook 清除），
+// 這裡放棄的只是「HTML 渲染結果」的快取。公開的 /stocks 列表頁不受影響，仍是 ISR。
 type Props = { params: Promise<{ id: string }> }
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
@@ -25,7 +32,13 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
 export default async function StockDetailPage({ params }: Props) {
   const { id } = await params
-  const detail = await getStockDetail(id)
+
+  // 兩個查詢彼此獨立，用 Promise.all 併行，避免白白多等一趟來回。
+  // getStockDetail 走公開快取；getWatchlistState 走 cookie、每人不同。
+  const [detail, watchlistState] = await Promise.all([
+    getStockDetail(id),
+    getWatchlistState(id),
+  ])
   if (!detail) notFound() // 查無此股 → 交給 Next 顯示 404 頁
 
   const { stock, quotes } = detail
@@ -42,15 +55,24 @@ export default async function StockDetailPage({ params }: Props) {
         ← 返回股票列表
       </Link>
 
-      <header className="mt-4 flex items-baseline gap-3">
-        <h1 className="text-3xl font-bold">{stock.name}</h1>
-        <span className="text-xl text-gray-500">{stock.id}</span>
-        {stock.market && (
-          <span className="rounded bg-gray-100 px-2 py-0.5 text-xs text-gray-600">
-            {stock.market === 'TWSE' ? '上市' : stock.market === 'TPEX' ? '上櫃' : stock.market}
-          </span>
-        )}
-      </header>
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+        <header className="flex items-baseline gap-3">
+          <h1 className="text-3xl font-bold">{stock.name}</h1>
+          <span className="text-xl text-gray-500">{stock.id}</span>
+          {stock.market && (
+            <span className="rounded bg-gray-100 px-2 py-0.5 text-xs text-gray-600">
+              {stock.market === 'TWSE' ? '上市' : stock.market === 'TPEX' ? '上櫃' : stock.market}
+            </span>
+          )}
+        </header>
+
+        {/* 唯一的 client island：其餘頁面內容仍是 Server Component */}
+        <WatchlistButton
+          stockId={stock.id}
+          initialIsWatched={watchlistState.isWatched}
+          isLoggedIn={watchlistState.isLoggedIn}
+        />
+      </div>
 
       {latest ? (
         <section className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-4">

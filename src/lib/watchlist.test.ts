@@ -4,9 +4,29 @@ import {
   StockIdSchema,
   toWatchlistMutation,
   UNIQUE_VIOLATION,
+  watchlistErrorMessage,
   type DbErrorLike,
+  type WatchlistErrorCode,
   type WatchlistJoinRow,
 } from './watchlist'
+
+describe('watchlistErrorMessage', () => {
+  const codes: WatchlistErrorCode[] = ['unauthenticated', 'invalid_stock_id', 'db_error']
+
+  it.each(codes)('每個錯誤代碼都有對應的中文訊息：%s', (code) => {
+    const msg = watchlistErrorMessage(code)
+    expect(msg).toBeTruthy()
+    expect(msg).not.toBe(code) // 不能只是把代碼原封不動吐回去
+  })
+
+  // 呼應「不外洩」的設計：給使用者看的文案不該帶技術術語或內部名詞
+  it('訊息不含技術術語（使用者看得懂的人話）', () => {
+    const all = codes.map(watchlistErrorMessage).join(' ')
+    for (const jargon of ['db_error', 'SQL', 'constraint', 'RLS', 'watchlist']) {
+      expect(all).not.toContain(jargon)
+    }
+  })
+})
 
 describe('toWatchlistMutation — 正常路徑', () => {
   it('沒有錯誤 → 成功', () => {
