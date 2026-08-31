@@ -37,12 +37,21 @@ export async function getWatchlist(): Promise<WatchlistItem[]> {
   return mapWatchlistRows((data ?? []) as unknown as WatchlistJoinRow[])
 }
 
-// 個股頁用：判斷「這檔是否已在我的收藏」。未登入或查無 → false。
-export async function isWatchlisted(stockId: string): Promise<boolean> {
-  // 輸入驗證擋在最前面：格式就不對的代號不可能在收藏裡，直接回 false，省一趟 DB。
-  if (!StockIdSchema.safeParse(stockId).success) return false
+// 個股頁的 ★ 按鈕需要的狀態。一次回傳兩件事，避免頁面為了「登入了嗎」和
+// 「收藏了嗎」跑兩趟 auth 驗證。未登入時 isWatched 一律 false（也不必查 DB）。
+export type WatchlistState = { isLoggedIn: boolean; isWatched: boolean }
+
+export async function getWatchlistState(stockId: string): Promise<WatchlistState> {
+  if (!StockIdSchema.safeParse(stockId).success) {
+    return { isLoggedIn: false, isWatched: false }
+  }
 
   const supabase = await createClient()
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  if (!user) return { isLoggedIn: false, isWatched: false }
 
   // RLS 已限定本人；複合主鍵 (user_id, stock_id) 保證最多一列，故 maybeSingle 安全。
   const { data, error } = await supabase
@@ -51,8 +60,12 @@ export async function isWatchlisted(stockId: string): Promise<boolean> {
     .eq('stock_id', stockId)
     .maybeSingle()
 
-  if (error) return false
-  return data !== null
+  if (error) {
+    // 讀取失敗不該讓整頁掛掉：登入狀態仍然有效，收藏狀態退回「未收藏」。
+    console.error('DAL Error reading watchlist state:', error.message)
+    return { isLoggedIn: true, isWatched: false }
+  }
+  return { isLoggedIn: true, isWatched: data !== null }
 }
 
 // 加入收藏。需要登入：insert 必須寫 user_id，且 RLS with check 要求 auth.uid() = user_id。

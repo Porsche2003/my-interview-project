@@ -58,6 +58,20 @@ export function toWatchlistMutation(
   return { ok: false, error: 'db_error' }
 }
 
+// 錯誤代碼 → 使用者看得懂的中文訊息。
+// 這是「UI 層決定文案」那個設計的落腳處：DAL 只回封閉的代碼，這裡翻成人話。
+// 寫成純函式（而非散在元件裡的 if/else）才能被測試涵蓋，日後要做多語系也只改這裡。
+// 用 Record 而非 switch：新增代碼到 WatchlistErrorCode 時，TypeScript 會強制你補上對應文案。
+const ERROR_MESSAGES: Record<WatchlistErrorCode, string> = {
+  unauthenticated: '請先登入才能使用收藏功能',
+  invalid_stock_id: '股票代號格式不正確',
+  db_error: '操作失敗，請稍後再試',
+}
+
+export function watchlistErrorMessage(code: WatchlistErrorCode): string {
+  return ERROR_MESSAGES[code]
+}
+
 // 前端要用的乾淨型別（把 DB 巢狀結構攤平）
 export type WatchlistItem = {
   id: string

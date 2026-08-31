@@ -1,4 +1,4 @@
-# ADR-0001：股價讀取採全動態，暫不建置 revalidate webhook
+# ADR-0001：股價讀取採全動態，暫不建置 revalidate webhook(Superseded)
 
 > **狀態**：已採納（Accepted）
 > **日期**：2026-07-24
