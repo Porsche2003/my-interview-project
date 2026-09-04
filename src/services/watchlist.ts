@@ -17,24 +17,60 @@ export type { WatchlistErrorCode, WatchlistMutation } from '@/lib/watchlist'
 //   - 絕不快取（每人不同 + 會變動，快取會出現張冠李戴或髒讀）
 //   - 安全靠兩層：DAL 內先 getUser() 擋掉未登入；DB 層再由 RLS（auth.uid() = user_id）強制隔離
 
-// 列出目前登入使用者的收藏（join stocks 取名稱/市場）。未登入 → 空陣列。
-export async function getWatchlist(): Promise<WatchlistItem[]> {
+// 列出目前登入使用者的收藏（join stocks 取名稱/市場）。
+//
+// 回傳型別刻意用 `WatchlistItem[] | null` 把兩種狀況分開，讓呼叫端能做不同的 UI：
+//   null → 未登入（頁面該導去登入）
+//   []   → 已登入但收藏是空的（頁面該顯示「還沒有收藏」的空狀態）
+// 若只回 []，這兩件事會混在一起，畫面就分不出來該顯示哪一種。
+export async function getWatchlist(): Promise<WatchlistItem[] | null> {
   const supabase = await createClient()
 
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  if (!user) return null
+
   // RLS 的 select policy（auth.uid() = user_id）會自動只回「本人」的列，
-  // 所以這裡不必手動 .eq('user_id', ...)；未登入時 auth.uid() 為 null → 回 0 列。
+  // 所以這裡不必手動 .eq('user_id', ...)。
   const { data, error } = await supabase
     .from('watchlist')
     .select('created_at, stocks ( id, name, market )')
     .order('created_at', { ascending: false }) // 最近加入的排前面
 
   if (error) {
+    // 已登入但讀取失敗：回空陣列（不是 null），避免把使用者誤導去登入頁。
     console.error('DAL Error fetching watchlist:', error.message)
     return []
   }
 
   // 專案未生成 DB 型別，join 結果是鬆散型別，用 pure mapper 收斂成前端型別（並防禦孤兒列）。
   return mapWatchlistRows((data ?? []) as unknown as WatchlistJoinRow[])
+}
+
+// 只取「收藏了哪些代號」，給列表頁一次判斷多檔用。
+//
+// 為什麼需要它——避免 N+1：列表頁如果每一列都呼叫 getWatchlistState()，
+// 100 檔股票就是 100 趟查詢。這裡改成「一趟查詢拿回整個集合」，
+// 呼叫端在記憶體用 Set.has() 判斷，查詢次數從 N 降到 1。
+//
+// 回傳 string[] 而非 Set：這個值要跨 Server/Client 邊界序列化傳輸，
+// 陣列一定安全，Set 不保證。轉成 Set 的動作交給接收端做。
+export async function getWatchlistStockIds(): Promise<string[] | null> {
+  const supabase = await createClient()
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  if (!user) return null
+
+  const { data, error } = await supabase.from('watchlist').select('stock_id')
+
+  if (error) {
+    console.error('DAL Error fetching watchlist ids:', error.message)
+    return []
+  }
+  return (data ?? []).map((row) => row.stock_id as string)
 }
 
 // 個股頁的 ★ 按鈕需要的狀態。一次回傳兩件事，避免頁面為了「登入了嗎」和

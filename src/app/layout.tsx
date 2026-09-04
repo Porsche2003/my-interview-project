@@ -41,6 +41,13 @@ export default function RootLayout({
             >
               個股列表
             </Link>
+            {/* 未登入時點這個會被導去 /login（見 app/watchlist/page.tsx） */}
+            <Link
+              href="/watchlist"
+              className="text-sm text-gray-600 hover:text-gray-900"
+            >
+              我的收藏
+            </Link>
           </nav>
         </header>
         {children}

@@ -1,7 +1,24 @@
 'use server'
 
-import { addToWatchlist, removeFromWatchlist } from '@/services/watchlist'
+import {
+  addToWatchlist,
+  removeFromWatchlist,
+  getWatchlistStockIds,
+} from '@/services/watchlist'
 import type { WatchlistMutation } from '@/services/watchlist'
+
+// 讀取用的 Server Function（不是 mutation，所以不叫 Action）。
+//
+// 為什麼「讀取」要繞這一圈，而不是直接在 Server Component 裡讀？
+// 因為 /stocks 列表頁是**靜態 ISR 快取**的（build 表上的 ○）。只要那頁碰了
+// cookie 判斷「你是誰」，整頁就會轉成動態，快取那輪的主要戰果就沒了。
+// 所以那頁維持靜態，讓 client island 在 hydrate 後呼叫這支自己取收藏狀態——
+// 公開的殼被快取、私人的部分在客戶端補上。
+//
+// 回傳 null 代表未登入（此時列表頁乾脆不顯示 ★），[] 代表已登入但沒有收藏。
+export async function getMyWatchlistIdsAction(): Promise<string[] | null> {
+  return await getWatchlistStockIds()
+}
 
 // 個股頁 ★ 按鈕用的 Server Action。
 //
